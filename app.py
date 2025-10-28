@@ -4,7 +4,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.llms import Ollama
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
 import streamlit as st
@@ -71,3 +71,4 @@ if uploaded_file:
             response = retrieval_chain.invoke({"input": query})
             st.success("✅ Answer:")
             st.write(response["answer"])
+
