@@ -45,7 +45,7 @@ if uploaded_file:
     # ------------------------------
     # LLM and prompt setup
     # ------------------------------
-    llm = Ollama(model="gemma:2b")
+    llm = Ollama(model="mistral:7b")
 
     prompt = ChatPromptTemplate.from_template("""
     You are a helpful assistant. Use the provided context to answer the question.
