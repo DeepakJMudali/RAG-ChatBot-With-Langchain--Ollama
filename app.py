@@ -1,71 +1,54 @@
-
-
-import os
-import streamlit as st
-from dotenv import load_dotenv
-
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_community.llms import Ollama
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_community.llms.huggingface_hub import HuggingFaceHub
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
-# ------------------------------
-# Load environment variables
-# ------------------------------
-load_dotenv()
-HF_TOKEN = os.getenv("HF_TOKEN")
+import streamlit as st
 
 # ------------------------------
 # Streamlit UI
 # ------------------------------
-st.title("📘 RAG App using Hugging Face + LangChain")
+st.title("📘 RAG App using Ollama + LangChain")
 
 uploaded_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
 
 if uploaded_file:
     # Save uploaded file temporarily
-    pdf_path = "./temp.pdf"
+    pdf_path = f"./temp.pdf"
     with open(pdf_path, "wb") as f:
         f.write(uploaded_file.read())
 
     # ------------------------------
-    # Load PDF
+    # Load and split the PDF
     # ------------------------------
     loader = PyPDFLoader(pdf_path)
     docs = loader.load()
 
     # ------------------------------
-    # Create Embeddings + Vector Store
+    # Create Embeddings and Vector Store
     # ------------------------------
-    st.info("🔎 Creating embeddings and vector store...")
+    st.info("Creating embeddings and vector store...")
 
+    # embeddings = OllamaEmbeddings(model="nomic-embed-text")
+ 
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
     vectorstore = FAISS.from_documents(docs, embedding=embeddings)
+
     retriever = vectorstore.as_retriever()
 
     # ------------------------------
-    # Use Hugging Face Hub LLM
+    # LLM and prompt setup
     # ------------------------------
-    st.info("🧠 Loading Hugging Face LLM...")
+    llm = Ollama(model="gemma:2b")
 
-    llm = HuggingFaceHub(
-        repo_id="HuggingFaceH4/zephyr-7b-beta",  # 💡 You can change this to any HF model
-        model_kwargs={
-            "temperature": 0.3,
-            "max_new_tokens": 512,
-        },
-        huggingfacehub_api_token=HF_TOKEN,
-    )
-
-    # ------------------------------
-    # Prompt Template
-    # ------------------------------
     prompt = ChatPromptTemplate.from_template("""
-    You are a helpful assistant. Use ONLY the following context to answer the user's question.
-    If you don't know, say "I'm not sure based on the document."
+    You are a helpful assistant. Use the provided context to answer the question.
 
     Context:
     {context}
@@ -77,13 +60,13 @@ if uploaded_file:
     """)
 
     # ------------------------------
-    # Create RAG Chain
+    # Create RAG chain
     # ------------------------------
     document_chain = create_stuff_documents_chain(llm, prompt)
     retrieval_chain = create_retrieval_chain(retriever, document_chain)
 
     # ------------------------------
-    # User Query
+    # User query input
     # ------------------------------
     query = st.text_input("💬 Ask a question based on the document:")
 
