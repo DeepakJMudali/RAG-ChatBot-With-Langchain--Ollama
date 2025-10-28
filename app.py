@@ -128,7 +128,7 @@ if uploaded_file:
         # Hugging Face model (requires your token)
         llm = HuggingFaceHub(
             repo_id="mistralai/Mistral-7B-Instruct-v0.2",
-            huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+            huggingfacehub_api_token=os.getenv("HF_TOKEN"),
             model_kwargs={"temperature": 0.3, "max_new_tokens": 512},
         )
 
@@ -161,3 +161,4 @@ if uploaded_file:
             response = retrieval_chain.invoke({"input": query})
             st.success("✅ Answer:")
             st.write(response["answer"])
+
