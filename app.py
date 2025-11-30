@@ -1,77 +1,59 @@
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.llms import Ollama
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain_community.llms.huggingface_hub import HuggingFaceHub
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
-
 import streamlit as st
+import os
+from langchain_groq import ChatGroq
+from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableParallel
+from langchain_community.vectorstores import FAISS
+from langchain_community.document_loaders import PyPDFDirectoryLoader
+from dotenv import load_dotenv
+load_dotenv()
+## load the GROQ API key from environment variables
+groq_api_key = os.getenv("GROQ_API_KEY")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+llm = ChatGroq(groq_api_key=groq_api_key, model_name="openai/gpt-oss-20b")
 
-# ------------------------------
-# Streamlit UI
-# ------------------------------
-st.title("📘 RAG App using Ollama + LangChain")
+#Create the prompt template
 
-uploaded_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
+prompt =ChatPromptTemplate.from_template("""
+If the answer is found in the context, use the context.
+If the answer is NOT in the context, then answer using your own general knowledge.
+<context>{context}</context>
+question:{input}
+""")
 
-if uploaded_file:
-    # Save uploaded file temporarily
-    pdf_path = f"./temp.pdf"
-    with open(pdf_path, "wb") as f:
-        f.write(uploaded_file.read())
+#create the embedding
 
-    # ------------------------------
-    # Load and split the PDF
-    # ------------------------------
-    loader = PyPDFLoader(pdf_path)
-    docs = loader.load()
+def create_vector_embeddings():
+    if "vectors" not in st.session_state:
+        st.session_state["embeddings"] = OpenAIEmbeddings()
+        st.session_state["loader"] = PyPDFDirectoryLoader("Research_papers") # data ingestion step
+        st.session_state["documents"] = st.session_state["loader"].load() # loading of documents
+        st.session_state["text_splitter"] = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200) # Creating text_splitter
+        st.session_state["finalResults"] = st.session_state["text_splitter"].split_documents(st.session_state["documents"][:50]) # splitted results
+        st.session_state["vectorStore"] = FAISS.from_documents(st.session_state["finalResults"],st.session_state["embeddings"] )
 
-    # ------------------------------
-    # Create Embeddings and Vector Store
-    # ------------------------------
-    st.info("Creating embeddings and vector store...")
+        # creating retriever for runnables
 
-    # embeddings = OllamaEmbeddings(model="nomic-embed-text")
- 
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        st.session_state["retriever"] =  st.session_state["vectorStore"].as_retriever()
 
-    vectorstore = FAISS.from_documents(docs, embedding=embeddings)
+        #create streamlit element
+        st.session_state["rag_chain"]=(RunnableParallel({"context":st.session_state["retriever"] ,"input":RunnablePassthrough()}) | prompt | llm)
 
-    retriever = vectorstore.as_retriever()
+        # To mark that vectors are created
+        st.session_state["vectors"] = True
 
-    # ------------------------------
-    # LLM and prompt setup
-    # ------------------------------
-    llm = Ollama(model="mistral:7b")
+# STREAMLIT UI
+st.title("RAG Document Q&A with GROQ + OpenAI Embeddings")
 
-    prompt = ChatPromptTemplate.from_template("""
-    You are a helpful assistant. Use the provided context to answer the question.
+# Initialize vector store + chain
+create_vector_embeddings()
 
-    Context:
-    {context}
+question = st.text_input("Ask a question")
 
-    Question:
-    {input}
-
-    Answer:
-    """)
-
-    # ------------------------------
-    # Create RAG chain
-    # ------------------------------
-    document_chain = create_stuff_documents_chain(llm, prompt)
-    retrieval_chain = create_retrieval_chain(retriever, document_chain)
-
-    # ------------------------------
-    # User query input
-    # ------------------------------
-    query = st.text_input("💬 Ask a question based on the document:")
-
-    if st.button("Get Answer") and query:
-        with st.spinner("Generating answer..."):
-            response = retrieval_chain.invoke({"input": query})
-            st.success("✅ Answer:")
-            st.write(response["answer"])
+if st.button("Submit") and question:
+    response = st.session_state["rag_chain"].invoke(question)
+    st.write("### Answer:")
+    st.write(response.content)
